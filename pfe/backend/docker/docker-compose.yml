@@ -1,0 +1,214 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: competitive_intelligence_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: competitive_intelligence
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: competitive_intelligence_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: competitive_intelligence_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+      
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: competitive_intelligence_backend
+    environment:
+      # Application
+      APP_NAME: "Plateforme d'Intelligence Concurrentielle"
+      APP_VERSION: "1.0.0"
+      DEBUG: "False"
+      API_V1_PREFIX: "/api/v1"
+      # Database
+      DATABASE_URL: mysql+pymysql://app_user:app_password@mysql:3306/competitive_intelligence
+      DATABASE_POOL_SIZE: 10
+      DATABASE_MAX_OVERFLOW: 20
+      DATABASE_ECHO: "False"
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      # RabbitMQ / Celery
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # Security
+      SECRET_KEY: change-this-secret-key-in-production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      # CORS
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:5173"
+      # Logging
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../app:/app/app
+      - ../logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  celery_worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: competitive_intelligence_celery_worker
+    command: celery -A app.scheduler.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      # Application
+      APP_NAME: "Plateforme d'Intelligence Concurrentielle"
+      APP_VERSION: "1.0.0"
+      DEBUG: "False"
+      API_V1_PREFIX: "/api/v1"
+      # Database
+      DATABASE_URL: mysql+pymysql://app_user:app_password@mysql:3306/competitive_intelligence
+      DATABASE_POOL_SIZE: 10
+      DATABASE_MAX_OVERFLOW: 20
+      DATABASE_ECHO: "False"
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      # RabbitMQ / Celery
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # Security
+      SECRET_KEY: change-this-secret-key-in-production
+      ALGORITHM: HS256
+      # Logging
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+    volumes:
+      - ../app:/app/app
+      - ../logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  celery_beat:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: competitive_intelligence_celery_beat
+    command: celery -A app.scheduler.celery_app beat --loglevel=info
+    environment:
+      # Application
+      APP_NAME: "Plateforme d'Intelligence Concurrentielle"
+      APP_VERSION: "1.0.0"
+      DEBUG: "False"
+      API_V1_PREFIX: "/api/v1"
+      # Database
+      DATABASE_URL: mysql+pymysql://app_user:app_password@mysql:3306/competitive_intelligence
+      DATABASE_POOL_SIZE: 10
+      DATABASE_MAX_OVERFLOW: 20
+      DATABASE_ECHO: "False"
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      # RabbitMQ / Celery
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # Security
+      SECRET_KEY: change-this-secret-key-in-production
+      ALGORITHM: HS256
+      # Logging
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+    volumes:
+      - ../app:/app/app
+      - ../logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - app_network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  app_network:
+    driver: bridge
+

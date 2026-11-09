@@ -1,0 +1,2 @@
+# Shell entrypoints must use LF so Docker/Linux shebangs work on Windows checkouts.
+*.sh text eol=lf

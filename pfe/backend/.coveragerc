@@ -1,0 +1,14 @@
+[run]
+source = app
+omit =
+    app/alembic/*
+    app/scheduler/celery_app.py
+    app/main.py
+
+[report]
+show_missing = True
+skip_covered = True
+fail_under = 80
+include =
+    app/services/*
+    app/scraping/adapters/*

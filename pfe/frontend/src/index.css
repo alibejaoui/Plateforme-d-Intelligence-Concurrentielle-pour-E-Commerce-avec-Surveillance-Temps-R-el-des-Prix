@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply antialiased;
+  background-color: #F5F7FA;
+  color: #1F2937;
+}
+
+html[dir='rtl'] body {
+  direction: rtl;
+}
+
